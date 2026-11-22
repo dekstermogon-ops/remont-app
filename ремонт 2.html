@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Экспресс-диагностика и ремонт</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #0f1115);
+      --card: var(--tg-theme-secondary-bg-color, #181b22);
+      --text: var(--tg-theme-text-color, #f3f4f6);
+      --hint: var(--tg-theme-hint-color, #9ca3af);
+      --accent: var(--tg-theme-button-color, #3b82f6);
+      --accent-text: var(--tg-theme-button-text-color, #ffffff);
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 84px; line-height: 1.45; }
+
+    .header { margin-bottom: 18px; }
+    .header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .header p { font-size: 13px; color: var(--hint); margin-top: 4px; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+    .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--hint); margin-bottom: 8px; display: block; }
+
+    select, input[type="text"], textarea {
+      width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 11px 12px; font-size: 15px; outline: none; margin-bottom: 10px;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 8px 12px; border-radius: 10px; font-size: 13px; background: var(--bg);
+      border: 1px solid var(--border); color: var(--text); cursor: pointer; transition: 0.15s;
+    }
+    .chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+
+    .upload-box {
+      border: 1.5px dashed var(--border); border-radius: 12px; padding: 16px; text-align: center;
+      cursor: pointer; background: rgba(255,255,255,0.02); transition: 0.2s; display: block;
+    }
+    .upload-box:hover { border-color: var(--accent); }
+    .upload-box input { display: none; }
+    .preview-img { max-width: 100%; max-height: 180px; border-radius: 10px; margin-top: 10px; display: none; object-fit: cover; }
+
+    .ai-box {
+      background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 13px; display: none;
+    }
+    .ai-box strong { color: #60a5fa; display: block; margin-bottom: 4px; }
+
+    .price-row { display: flex; justify-content: space-between; align-items: center; }
+    .price-val { font-size: 22px; font-weight: 800; color: #34d399; }
+
+    .btn-submit {
+      width: 100%; padding: 14px; border: none; border-radius: 12px; background: var(--accent);
+      color: var(--accent-text); font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 6px;
+    }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { text-align: center; font-size: 13px; margin-top: 10px; color: #34d399; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Диагностика и ремонт</h1>
+    <p>Узнайте точную стоимость за 30 секунд с помощью ИИ-оценки</p>
+  </div>
+
+  <div class="card">
+    <span class="label">1. Устройство</span>
+    <select id="brand" onchange="recalc()">
+      <option value="iPhone">Apple iPhone</option>
+      <option value="Samsung">Samsung Galaxy</option>
+      <option value="Xiaomi">Xiaomi / Redmi / POCO</option>
+      <option value="Other">Другой бренд</option>
+    </select>
+    <input type="text" id="model" placeholder="Модель (например, iPhone 13 или S22 Ultra)" oninput="recalc()" />
+  </div>
+
+  <div class="card">
+    <span class="label">2. Что случилось?</span>
+    <div class="chips" id="symptomChips">
+      <div class="chip" data-issue="Разбит экран / полосы" data-min="110" data-max="290">Разбит экран</div>
+      <div class="chip" data-issue="Быстро разряжается АКБ" data-min="65" data-max="120">Батарея</div>
+      <div class="chip" data-issue="Не заряжается / разъём" data-min="45" data-max="85">Разъём зарядки</div>
+      <div class="chip" data-issue="Разбита задняя крышка" data-min="70" data-max="150">Задняя крышка</div>
+      <div class="chip" data-issue="Попала влага / не включается" data-min="60" data-max="160">Вода / не вкл.</div>
+      <div class="chip" data-issue="Камера / динамик / микрофон" data-min="50" data-max="110">Звук / камера</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="label">3. Фото поломки (ИИ-анализ)</span>
+    <label class="upload-box" for="photoInput">
+      <div id="uploadText">📸 Нажмите, чтобы загрузить фото экрана или корпуса</div>
+      <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(event)" />
+      <img id="previewImg" class="preview-img" alt="Предпросмотр" />
+    </label>
+    <div id="aiBox" class="ai-box">
+      <strong>Вердикт ИИ-мастера:</strong>
+      <span id="aiText">Анализирую изображение...</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="price-row">
+      <div>
+        <span class="label" style="margin-bottom:2px;">Предварительно</span>
+        <span style="font-size:12px; color:var(--hint);">Точная диагностика — 0 BYN</span>
+      </div>
+      <div class="price-val" id="priceRange">от 50 BYN</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="label">4. Связь и комментарий</span>
+    <input type="text" id="contact" placeholder="Телефон или @username (необязательно)" />
+    <textarea id="comment" rows="2" placeholder="Дополнительные детали (например, срочно сегодня)"></textarea>
+    <button class="btn-submit" id="submitBtn" onclick="sendOrder()">Записаться на ремонт</button>
+    <div class="status" id="statusMsg"></div>
+  </div>
+
+  <script>
+    // === НАСТРОЙКИ ===
+    const BOT_TOKEN = "9218746718:AAFc8nEJS-VY1CoIzXy7gbpaN6Vg0WBy2-4";
+    const ADMIN_CHAT_ID = "5942602244";
+    const GEMINI_API_KEY = "AQ.Ab8RN6KHSg__gxaZq9rZUSFjpv07Y10OnfFVla3woazIpBNRcg";
+    // =================
+
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.ready();
+
+    const user = tg.initDataUnsafe?.user;
+    if (user?.username) {
+      document.getElementById('contact').value = '@' + user.username;
+    }
+
+    let selectedIssues = [];
+    let aiVerdict = "Фото не прикреплено";
+    let uploadedFile = null;
+
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        recalc();
+      });
+    });
+
+    function recalc() {
+      const brand = document.getElementById('brand').value;
+      const mult = brand === 'iPhone' ? 1.25 : brand === 'Samsung' ? 1.15 : 1.0;
+      let minTotal = 0;
+      let maxTotal = 0;
+      selectedIssues = [];
+
+      document.querySelectorAll('.chip.active').forEach(c => {
+        selectedIssues.push(c.dataset.issue);
+        minTotal += Math.round(Number(c.dataset.min) * mult);
+        maxTotal += Math.round(Number(c.dataset.max) * mult);
+      });
+
+      const priceEl = document.getElementById('priceRange');
+      priceEl.textContent = selectedIssues.length === 0 ? 'от 50 BYN' : `${minTotal} – ${maxTotal} BYN`;
+    }
+
+    async function handlePhoto(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      uploadedFile = file;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target.result;
+        const photoBase64 = dataUrl.split(',')[1];
+        const img = document.getElementById('previewImg');
+        img.src = dataUrl;
+        img.style.display = 'block';
+        document.getElementById('uploadText').textContent = '🔄 Заменить фото';
+
+        const aiBox = document.getElementById('aiBox');
+        const aiText = document.getElementById('aiText');
+        aiBox.style.display = 'block';
+        aiText.textContent = 'ИИ оценивает характер повреждений...';
+
+        try {
+          const modelName = document.getElementById('model').value || document.getElementById('brand').value;
+          const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: `Ты опытный мастер по ремонту смартфонов в Минске. Коротко (2-3 предложения, без воды) оцени по фото повреждение телефона (${modelName}): затронуто только стекло или матрица/корпус, и какие детали понадобятся.` },
+                  { inline_data: { mime_type: file.type, data: photoBase64 } }
+                ]
+              }]
+            })
+          });
+          const data = await resp.json();
+          if (data?.error) throw new Error(data.error.message);
+          aiVerdict = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Требуется визуальный осмотр мастером.";
+          aiText.textContent = aiVerdict;
+        } catch (err) {
+          aiVerdict = "Фото загружено (оценка мастером при приёмке).";
+          aiText.textContent = aiVerdict;
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function sendOrder() {
+      const btn = document.getElementById('submitBtn');
+      const status = document.getElementById('statusMsg');
+      const brand = document.getElementById('brand').value;
+      const model = document.getElementById('model').value.trim() || 'Не указана';
+      const contact = document.getElementById('contact').value.trim() || 'Не указан';
+      const comment = document.getElementById('comment').value.trim() || '—';
+      const price = document.getElementById('priceRange').textContent;
+      const issuesStr = selectedIssues.length ? selectedIssues.join(', ') : 'Диагностика';
+      const tgUser = user ? `${user.first_name || ''} (@${user.username || 'без_юзернейма'}, ID: ${user.id})` : 'Гость';
+
+      const text = [
+        `🛠 <b>Новая заявка на ремонт</b>`,
+        `📱 <b>Устройство:</b> ${brand} ${model}`,
+        `⚠️ <b>Проблема:</b> ${issuesStr}`,
+        `💰 <b>Оценка:</b> ${price}`,
+        `🤖 <b>ИИ-осмотр:</b> ${aiVerdict}`,
+        `👤 <b>Клиент:</b> ${tgUser}`,
+        `📞 <b>Контакт:</b> ${contact}`,
+        `💬 <b>Коммент:</b> ${comment}`
+      ].join('\n');
+
+      btn.disabled = true;
+      btn.textContent = 'Отправка...';
+
+      try {
+        if (uploadedFile) {
+          const formData = new FormData();
+          formData.append('chat_id', ADMIN_CHAT_ID);
+          formData.append('photo', uploadedFile);
+          formData.append('caption', text.slice(0, 1020));
+          formData.append('parse_mode', 'HTML');
+
+          const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+            method: 'POST',
+            body: formData
+          });
+          if (!res.ok) throw new Error('Telegram API error');
+        } else {
+          const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: ADMIN_CHAT_ID,
+              text: text,
+              parse_mode: 'HTML'
+            })
+          });
+          if (!res.ok) throw new Error('Telegram API error');
+        }
+
+        status.style.color = '#34d399';
+        status.textContent = '✅ Заявка отправлена! Мастер скоро напишет вам в Telegram.';
+        btn.textContent = 'Отправлено';
+        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      } catch (e) {
+        status.style.color = '#f87171';
+        status.textContent = 'Ошибка отправки. Убедитесь, что нажали /start в боте.';
+        btn.disabled = false;
+        btn.textContent = 'Повторить отправку';
+      }
+    }
+  </script>
+</body>
+</html>
